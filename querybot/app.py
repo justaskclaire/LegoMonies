@@ -1,5 +1,3 @@
-+108
--35
 
 import logging
 import os
@@ -101,16 +99,20 @@ def generate_recommendation(user_prompt):
     if client is None:
         raise RuntimeError("OpenAI client is not configured. Set OPENAI_API_KEY and restart the app.")
 
-    with sqlite3.connect(DB_PATH) as conn:
-        logger.info("Building dataset for LEGO recommendations.")
-        df = pd.read_sql_query("""
-            SELECT SetName, Theme, Subtheme, Pieces, USRetailPrice AS RRP, YearFrom, Availability
-            FROM SetList
-            WHERE Pieces > 50 AND USRetailPrice IS NOT NULL
-        """, conn)
+    # Build the dataset by translating the user's prompt into SQL
+    try:
+        columns = get_table_schema()
+        sql = generate_sql(user_prompt, columns)
+        logger.info("Generated SQL for recommendations: %s", sql)
+        df = run_query(sql)
+        if "error" in df.columns:
+            raise RuntimeError(df.iloc[0]["error"])
+    except Exception as exc:
+        logger.exception("Failed to build dataset for recommendations.")
+        raise RuntimeError("Failed to build dataset for recommendations.") from exc
 
     def format_row(row):
-        return f"{row['SetName']} ({row['Theme']} - {row['Subtheme']}), {row['Pieces']} pcs, ${row['RRP']}, released in {row['YearFrom']}, {row['Availability']}"
+        return f"{row['SetName']} ({row['Theme']} - {row['Subtheme']}), {row['Pieces']} pcs, {row['USRetailPrice']}, released in {row['YearFrom']}, {row['Availability']}"
 
     # Limit to ~300 rows to avoid token limits
     summaries = [format_row(row) for _, row in df.head(300).iterrows()]
