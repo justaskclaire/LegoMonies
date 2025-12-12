@@ -11,7 +11,7 @@ from openai import OpenAI
 load_dotenv()
 
 # === Logging ===
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()
 logging.basicConfig(
     level=LOG_LEVEL,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -52,7 +52,8 @@ def generate_sql(natural_language, columns):
     system_prompt = f"""
 You are a helpful assistant that converts natural language into SQL queries.
 The table is named SetList and has the following columns: {', '.join(columns)}.
-Do NOT use backticks or brackets. Only use standard SQL.
+Do NOT use backticks or brackets. Only use standard sqlite3 functions.
+Always SELECT all columns
 Only SELECT queries. Never write UPDATE, DELETE, or INSERT.
 """
     try:
@@ -111,8 +112,16 @@ def generate_recommendation(user_prompt):
         logger.exception("Failed to build dataset for recommendations.")
         raise RuntimeError("Failed to build dataset for recommendations.") from exc
 
-    def format_row(row):
-        return f"{row['SetName']} ({row['Theme']} - {row['Subtheme']}), {row['Pieces']} pcs, {row['USRetailPrice']}, released in {row['YearFrom']}, {row['Availability']}"
+    def format_row(row, columns_list=columns):
+        parts = []
+        for col in columns_list:
+            # Use repr for safer stringification of values
+            try:
+                val = row.get(col, None)
+            except Exception:
+                val = None
+            parts.append(f"{col}: {repr(val)}")
+        return ", ".join(parts)
 
     # Limit to ~300 rows to avoid token limits
     summaries = [format_row(row) for _, row in df.head(300).iterrows()]
